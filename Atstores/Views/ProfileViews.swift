@@ -258,11 +258,11 @@ struct MyBookingsView: View {
                 ForEach(bookings) { b in
                     Button { detail = b } label: { BookingCard(booking: b) }.buttonStyle(.plain)
                 }
-                if !loading && bookings.isEmpty { EmptyStateView(icon: "calendar", text: "No bookings yet") }
+                if !loading && bookings.isEmpty { EmptyStateView(icon: "calendar", text: "No bookings yet", detail: "Book a salon or spa appointment and it will show up here.", actionTitle: "Explore Salons", route: .storeList(categoryId: 32, title: "Salon & Spa")) }
             }
             .padding()
         }
-        .overlay { if loading { ProgressView() } }
+        .overlay { if loading && bookings.isEmpty { SkeletonView(style: .list).background(Color(.systemBackground)) } }
         .refreshable { await load() }
         .appHeader(title: "My Bookings")
         .sheet(item: $detail) { BookingDetailSheet(booking: $0) }
@@ -398,11 +398,11 @@ struct OrdersView: View {
                     .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 14))
                     .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
                 }
-                if !loading && orders.isEmpty { EmptyStateView(icon: "shippingbox", text: "No orders yet") }
+                if !loading && orders.isEmpty { EmptyStateView(icon: "shippingbox", text: "No orders yet", detail: "Your product orders will appear here.", actionTitle: "Browse Stores", route: .storeList(categoryId: 0, title: "All Stores")) }
             }
             .padding()
         }
-        .overlay { if loading { ProgressView() } }
+        .overlay { if loading && orders.isEmpty { SkeletonView(style: .list).background(Color(.systemBackground)) } }
         .appHeader(title: "My Orders")
         .task { await load() }
     }
@@ -436,9 +436,9 @@ struct WishlistView: View {
                 }
             }
             .padding()
-            if !loading && products.isEmpty { EmptyStateView(icon: "heart", text: "Your wishlist is empty") }
+            if !loading && products.isEmpty { EmptyStateView(icon: "heart", text: "Your wishlist is empty", detail: "Tap the heart on any product to save it here.", actionTitle: "Browse Stores", route: .storeList(categoryId: 0, title: "All Stores")) }
         }
-        .overlay { if loading { ProgressView() } }
+        .overlay { if loading && products.isEmpty { SkeletonView(style: .grid).background(Color(.systemBackground)) } }
         .appHeader(title: "Wishlist")
         .task { await load() }
     }
@@ -454,13 +454,8 @@ struct WishlistView: View {
         if json == nil { json = await API.shared.json(.get, "api/wishlist/byuser/\(uid)", auth: true) }
         var items = JSON.objects(from: json, preferredKeys: ["data", "list"])
         if items.isEmpty, let single = json as? JSONDict, single["productId"] != nil { items = [single] }
-        products = items.map { d -> Product in
-            var p = Product(d)
-            // The Android wishlist showed placeholder prices when the server sent none.
-            if p.sellPrice <= 0 { p.sellPrice = 999 }
-            if p.cutPrice <= 0 { p.cutPrice = 1499 }
-            return p
-        }.reversed()
+        // Real prices only; cards show "View details" when the server sends none.
+        products = items.map(Product.init).reversed()
     }
 }
 
@@ -477,9 +472,9 @@ struct SavedStoresView: View {
                 }
             }
             .padding()
-            if !loading && stores.isEmpty { EmptyStateView(icon: "bookmark", text: "No saved stores yet") }
+            if !loading && stores.isEmpty { EmptyStateView(icon: "bookmark", text: "No saved stores yet", detail: "Tap the heart on a store to keep it handy.", actionTitle: "Browse Stores", route: .storeList(categoryId: 0, title: "All Stores")) }
         }
-        .overlay { if loading { ProgressView() } }
+        .overlay { if loading && stores.isEmpty { SkeletonView(style: .grid).background(Color(.systemBackground)) } }
         .appHeader(title: "Saved Stores")
         .task { await load() }
     }

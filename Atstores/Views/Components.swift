@@ -85,8 +85,9 @@ struct AppHeader<Trailing: View>: ViewModifier {
                     Image("Logo")
                         .resizable()
                         .scaledToFit()
-                        .frame(height: 40)
-                        .frame(maxWidth: 130, alignment: .leading)
+                        .frame(height: title == nil ? 38 : 32)
+                        .frame(maxWidth: title == nil ? 124 : 104, alignment: .leading)
+                        .layoutPriority(1)
                     Button {
                         toast.show("Updating location...")
                         location.clearCache()
@@ -110,7 +111,7 @@ struct AppHeader<Trailing: View>: ViewModifier {
                     }
                 }
                 .padding(.horizontal, 14)
-                .padding(.vertical, 6)
+                .padding(.vertical, title == nil ? 6 : 3)
 
                 if let title {
                     Divider()
@@ -127,7 +128,7 @@ struct AppHeader<Trailing: View>: ViewModifier {
                         trailing
                     }
                     .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .padding(.vertical, 1)
                 }
               }
                 .background {
@@ -209,11 +210,87 @@ struct RemoteImage: View {
         }
     }
 
+    /// Branded placeholder: faint AtStores bag on a soft yellow background, scaled to the frame.
     private var fallback: some View {
-        ZStack {
-            Rectangle().fill(Theme.lightGray)
-            Image(systemName: placeholder).font(.title2).foregroundStyle(.secondary)
+        GeometryReader { geo in
+            let side = min(geo.size.width, geo.size.height)
+            ZStack {
+                LinearGradient(colors: [Color(hex: 0xFFF8E1), Color(hex: 0xFFECB3)], startPoint: .top, endPoint: .bottom)
+                Image("PlaceholderMark")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(height: max(16, side * 0.38))
+                    .opacity(0.22)
+            }
         }
+    }
+}
+
+/// Pulsing grey block used for skeleton loading.
+struct Shimmer: ViewModifier {
+    @State private var on = false
+    func body(content: Content) -> some View {
+        content
+            .opacity(on ? 0.45 : 1)
+            .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: on)
+            .onAppear { on = true }
+    }
+}
+
+enum SkeletonStyle { case list, grid, home }
+
+/// Placeholder cards shown while a screen loads for the first time.
+struct SkeletonView: View {
+    var style: SkeletonStyle = .list
+    private let block = Color(hex: 0xEDEDED)
+
+    var body: some View {
+        ScrollView {
+            Group {
+                switch style {
+                case .list:
+                    VStack(spacing: 12) {
+                        ForEach(0..<6, id: \.self) { _ in
+                            HStack(spacing: 12) {
+                                RoundedRectangle(cornerRadius: 10).fill(block).frame(width: 88, height: 88)
+                                VStack(alignment: .leading, spacing: 8) {
+                                    RoundedRectangle(cornerRadius: 4).fill(block).frame(height: 14)
+                                    RoundedRectangle(cornerRadius: 4).fill(block).frame(width: 120, height: 10)
+                                    RoundedRectangle(cornerRadius: 4).fill(block).frame(width: 160, height: 10)
+                                }
+                            }
+                        }
+                    }
+                case .grid:
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+                        ForEach(0..<6, id: \.self) { _ in
+                            VStack(alignment: .leading, spacing: 8) {
+                                RoundedRectangle(cornerRadius: 10).fill(block).aspectRatio(1.2, contentMode: .fit)
+                                RoundedRectangle(cornerRadius: 4).fill(block).frame(height: 12)
+                                RoundedRectangle(cornerRadius: 4).fill(block).frame(width: 70, height: 12)
+                            }
+                        }
+                    }
+                case .home:
+                    VStack(alignment: .leading, spacing: 18) {
+                        RoundedRectangle(cornerRadius: 14).fill(block).aspectRatio(2.2, contentMode: .fit)
+                        HStack(spacing: 12) {
+                            ForEach(0..<5, id: \.self) { _ in Circle().fill(block).frame(width: 52, height: 52) }
+                        }
+                        RoundedRectangle(cornerRadius: 4).fill(block).frame(width: 140, height: 16)
+                        HStack(spacing: 12) {
+                            ForEach(0..<2, id: \.self) { _ in
+                                RoundedRectangle(cornerRadius: 12).fill(block).aspectRatio(1.4, contentMode: .fit)
+                            }
+                        }
+                    }
+                }
+            }
+            .padding()
+            .modifier(Shimmer())
+        }
+        .scrollDisabled(true)
+        .allowsHitTesting(false)
     }
 }
 
@@ -270,12 +347,38 @@ private struct SaveStoreButton: View {
     }
 }
 
+/// OPEN / CLOSED from the store's real hours; hidden when the hours are unknown.
 private struct OpenBadge: View {
+    let store: Store
     var body: some View {
-        // DateTimeUtils.isStoreOpen always returned true in the Android app.
-        Text("OPEN").font(.caption2.bold()).foregroundStyle(.white)
-            .padding(.horizontal, 6).padding(.vertical, 2)
-            .background(Theme.open.opacity(0.85), in: RoundedRectangle(cornerRadius: 4))
+        if let open = store.isOpenNow {
+            Text(open ? "OPEN" : "CLOSED").font(.caption2.bold()).foregroundStyle(.white)
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .background((open ? Theme.open : Theme.closed).opacity(0.9), in: RoundedRectangle(cornerRadius: 4))
+        }
+    }
+}
+
+/// "Open · 2.3 km · ★ 4.5 (12)" — each part only when the data exists.
+private struct StoreMetaLine: View {
+    let store: Store
+    private var location = LocationService.shared
+
+    init(store: Store) { self.store = store }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if let open = store.isOpenNow {
+                Text(open ? "Open" : "Closed").fontWeight(.semibold).foregroundStyle(open ? Theme.open : Theme.closed)
+            }
+            if let km = store.distanceKm(fromLat: location.lat, lng: location.lng) {
+                Label(Format.km(km), systemImage: "location.fill").labelStyle(.titleAndIcon)
+                    .foregroundStyle(.secondary)
+            }
+            RatingLabel(store: store)
+        }
+        .font(.caption)
+        .lineLimit(1)
     }
 }
 
@@ -300,17 +403,12 @@ struct StoreCard: View {
                 RemoteImage(url: store.storeImage, placeholder: "storefront")
                     .frame(width: 200, height: 120)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .overlay(alignment: .topLeading) { OpenBadge().padding(8) }
+                    .overlay(alignment: .topLeading) { OpenBadge(store: store).padding(8) }
                     .overlay(alignment: .topTrailing) { SaveStoreButton(store: store).padding(6) }
                 Text(store.storeName).font(.subheadline.bold()).lineLimit(1)
-                Text(store.storeCategoryName ?? "Category").font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                HStack {
-                    Text(store.city ?? store.storeAddress ?? "Address").lineLimit(1)
-                    Spacer(minLength: 4)
-                    Text(Format.distance(store.distance))
-                }
-                .font(.caption).foregroundStyle(.secondary)
-                RatingLabel(store: store)
+                Text([store.storeCategoryName, store.city].compactMap { $0 }.joined(separator: " · "))
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                StoreMetaLine(store: store)
             }
             .frame(width: 200, alignment: .leading)
         }
@@ -329,14 +427,12 @@ struct StoreRow: View {
                     .frame(width: 96, height: 96)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(store.storeName).font(.headline).lineLimit(1)
-                    Text(store.storeCategoryName ?? "").font(.caption).foregroundStyle(.secondary)
-                    Text(store.storeAddress ?? "Address not available").font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                    HStack(spacing: 10) {
-                        Text("OPEN").font(.caption.bold()).foregroundStyle(Theme.open)
-                        Text(Format.distance(store.distance)).font(.caption).foregroundStyle(.secondary)
-                        RatingLabel(store: store)
+                    Text(store.storeName).font(.subheadline.weight(.semibold)).lineLimit(1)
+                    if let cat = store.storeCategoryName {
+                        Text(cat).font(.caption).foregroundStyle(.orange)
                     }
+                    Text(store.storeAddress ?? "Address not available").font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    StoreMetaLine(store: store)
                 }
                 Spacer(minLength: 0)
                 SaveStoreButton(store: store)
@@ -357,9 +453,9 @@ struct StoreGridCard: View {
     var body: some View {
         NavigationLink(value: Route.store(store)) {
             VStack(alignment: .leading, spacing: 4) {
-                RemoteImage(url: store.storeImage, placeholder: "storefront")
-                    .frame(height: 110)
-                    .frame(maxWidth: .infinity)
+                Color.clear
+                    .aspectRatio(1.3, contentMode: .fit)
+                    .overlay { RemoteImage(url: store.storeImage, placeholder: "storefront") }
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .overlay(alignment: .topTrailing) {
                         SaveStoreButton(store: store, removeMode: true, onRemoved: onRemoved).padding(6)
@@ -389,14 +485,19 @@ struct ProductCard: View {
     var body: some View {
         NavigationLink(value: Route.product(product)) {
             VStack(alignment: .leading, spacing: 4) {
-                RemoteImage(url: product.thumbnailImage, placeholder: "bag")
-                    .frame(height: 130)
-                    .frame(maxWidth: .infinity)
+                // Square-ish image that scales with the column width on small and large phones.
+                Color.clear
+                    .aspectRatio(1.15, contentMode: .fit)
+                    .overlay { RemoteImage(url: product.thumbnailImage, placeholder: "bag") }
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .overlay(alignment: .topLeading) {
-                        Text(product.discountText).font(.caption2.bold()).foregroundStyle(.white)
-                            .padding(.horizontal, 6).padding(.vertical, 3)
-                            .background(Color.green, in: RoundedRectangle(cornerRadius: 4)).padding(6)
+                        if product.discountText != "NEW" || product.sellPrice > 0 {
+                            Text(product.discountText).font(.caption2.bold()).foregroundStyle(.white)
+                                .padding(.horizontal, 6).padding(.vertical, 3)
+                                .background(product.discountText == "NEW" ? Color.blue : Theme.open,
+                                            in: RoundedRectangle(cornerRadius: 4))
+                                .padding(6)
+                        }
                     }
                     .overlay(alignment: .topTrailing) {
                         Button { Task { await toggle() } } label: {
@@ -409,10 +510,18 @@ struct ProductCard: View {
                         .buttonStyle(.plain)
                         .padding(6)
                     }
-                Text(product.productName).font(.subheadline.weight(.semibold)).lineLimit(2)
+                Text(product.productName).font(.subheadline.weight(.semibold))
+                    .lineLimit(2, reservesSpace: true)
+                // Only real prices; the strike-through price only when it's higher.
                 HStack(spacing: 6) {
-                    Text(Format.price(product.sellPrice)).font(.subheadline.bold())
-                    Text(Format.price(product.cutPrice)).font(.caption).strikethrough().foregroundStyle(.secondary)
+                    if product.sellPrice > 0 {
+                        Text(Format.price(product.sellPrice)).font(.subheadline.bold())
+                        if product.cutPrice > product.sellPrice {
+                            Text(Format.price(product.cutPrice)).font(.caption).strikethrough().foregroundStyle(.secondary)
+                        }
+                    } else {
+                        Text("View details").font(.caption.weight(.medium)).foregroundStyle(.orange)
+                    }
                 }
             }
             .padding(8)
@@ -563,9 +672,34 @@ struct SearchField: View {
 struct EmptyStateView: View {
     let icon: String
     let text: String
+    var detail: String? = nil
+    var actionTitle: String? = nil
+    var route: Route? = nil
+
     var body: some View {
-        ContentUnavailableView(text, systemImage: icon)
-            .frame(maxWidth: .infinity, minHeight: 300)
+        VStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 34, weight: .medium))
+                .foregroundStyle(.orange)
+                .frame(width: 76, height: 76)
+                .background(Theme.primary.opacity(0.15), in: Circle())
+            Text(text).font(.headline)
+            if let detail {
+                Text(detail).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            }
+            if let actionTitle, let route {
+                NavigationLink(value: route) {
+                    Text(actionTitle).font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 22).padding(.vertical, 10)
+                        .background(Theme.primary, in: Capsule())
+                        .foregroundStyle(.black)
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 4)
+            }
+        }
+        .padding(.horizontal, 32)
+        .frame(maxWidth: .infinity, minHeight: 320)
     }
 }
 

@@ -30,6 +30,13 @@ nonisolated enum Format {
 
     static func distance(_ km: Double) -> String { km > 0 ? String(format: "%.1f km", km) : "Nearby" }
 
+    /// "Nearby" / "450 m" / "2.3 km".
+    static func km(_ km: Double) -> String {
+        if km < 0.05 { return "Nearby" }
+        if km < 1 { return "\(Int((km * 1000 / 10).rounded()) * 10) m" }
+        return String(format: "%.1f km", km)
+    }
+
     static func rating(_ avg: Double, _ count: Int) -> String {
         count > 0 ? String(format: "%.1f (%d)", avg, count) : String(format: "%.1f", avg)
     }
@@ -72,6 +79,21 @@ nonisolated enum Format {
         return s
     }
 
+    /// Minutes since midnight for "22:00", "10:23:00" or "09:00 PM"; nil when unparseable.
+    static func minutes(_ raw: String?) -> Int? {
+        guard let s = raw?.trimmingCharacters(in: .whitespaces), !s.isEmpty else { return nil }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        for fmt in ["HH:mm:ss", "HH:mm", "H:mm", "hh:mm a", "h:mm a"] {
+            f.dateFormat = fmt
+            if let d = f.date(from: s) {
+                let c = Calendar.current.dateComponents([.hour, .minute], from: d)
+                return (c.hour ?? 0) * 60 + (c.minute ?? 0)
+            }
+        }
+        return nil
+    }
+
     static func endTime(start: String, durationMins: Int) -> String {
         guard let d = slotFormatter.date(from: start) else { return start }
         return slotFormatter.string(from: d.addingTimeInterval(Double(durationMins) * 60))
@@ -92,6 +114,15 @@ nonisolated enum Format {
         f.timeZone = TimeZone(identifier: "UTC")
         f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
         return f.string(from: Date())
+    }
+}
+
+nonisolated extension String {
+    /// "NEW YEAR OFFER" -> "New Year Offer"; leaves normal casing and short codes alone.
+    var displayCased: String {
+        let letters = filter(\.isLetter)
+        guard letters.count > 4, self == uppercased() else { return self }
+        return capitalized
     }
 }
 

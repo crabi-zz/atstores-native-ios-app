@@ -16,6 +16,8 @@ nonisolated struct Store: Identifiable, Hashable {
     var distance: Double = 0
     var avgRating: Double = 0
     var ratingCount: Int = 0
+    var latitude: Double?
+    var longitude: Double?
 
     var id: Int { storeId }
 
@@ -23,10 +25,13 @@ nonisolated struct Store: Identifiable, Hashable {
 
     init(_ d: JSONDict) {
         storeId = d.int("storeId", "id")
-        storeName = d.str("storeName", "name") ?? "Store"
+        storeName = (d.str("storeName", "name") ?? "Store").displayCased
         storeAddress = d.str("storeAddress", "address")
         storeContactNo = d.str("storeContactNo", "mobile", "contactNo")
-        storeWebsite = d.str("storeWebsite", "website")
+        // The backend sometimes stores the Swagger placeholder "string" as the website.
+        storeWebsite = d.str("storeWebsite", "website").flatMap { $0.lowercased() == "string" ? nil : $0 }
+        let lat = d.double("storeLatitude", "latitude"), lng = d.double("storeLongitude", "longitude")
+        if lat != 0, lng != 0 { latitude = lat; longitude = lng }
         storeCategoryId = d.int("storeCategoryId")
         storeCategoryName = d.str("storeCategoryName", "categoryName", "category", "storeCategory")
         city = d.str("city")
@@ -40,6 +45,24 @@ nonisolated struct Store: Identifiable, Hashable {
     }
 
     var isSalon: Bool { (storeCategoryName ?? "").lowercased().contains("salon") }
+
+    /// Distance in km: the API's value when present, otherwise computed from coordinates.
+    func distanceKm(fromLat lat: Double, lng: Double) -> Double? {
+        if distance > 0 { return distance }
+        guard let la = latitude, let lo = longitude else { return nil }
+        let r = 6371.0, dLat = (la - lat) * .pi / 180, dLng = (lo - lng) * .pi / 180
+        let a = sin(dLat / 2) * sin(dLat / 2) + cos(lat * .pi / 180) * cos(la * .pi / 180) * sin(dLng / 2) * sin(dLng / 2)
+        let km = r * 2 * atan2(sqrt(a), sqrt(1 - a))
+        return km < 500 ? km : nil   // far away (e.g. simulator in the US): don't show a misleading number
+    }
+
+    /// true/false from the store hours; nil when the hours are unknown.
+    var isOpenNow: Bool? {
+        guard let open = Format.minutes(startTime), let close = Format.minutes(endTime), open != close else { return nil }
+        let c = Calendar.current.dateComponents([.hour, .minute], from: Date())
+        let now = (c.hour ?? 0) * 60 + (c.minute ?? 0)
+        return open < close ? (now >= open && now < close) : (now >= open || now < close)   // handles overnight hours
+    }
 }
 
 nonisolated struct Product: Identifiable, Hashable {
@@ -61,7 +84,7 @@ nonisolated struct Product: Identifiable, Hashable {
 
     init(_ d: JSONDict) {
         productId = d.int("productId", "id", "product_id", "pid")
-        productName = d.str("productName", "name") ?? "Product"
+        productName = (d.str("productName", "name") ?? "Product").displayCased
         categoryName = d.str("categoryName")
         description = d.str("description")
         storeId = d.int("storeId", "sid", "store_id")
@@ -110,7 +133,7 @@ nonisolated struct Offer: Identifiable, Hashable {
 
     init(_ d: JSONDict) {
         offerId = d.int("offerId", "id")
-        offerName = d.str("offerName", "name") ?? "Special Offer"
+        offerName = (d.str("offerName", "name") ?? "Special Offer").displayCased
         storeId = d.str("storeId")
         discount = d.int("discount")
         thumbnailImage = d.str("thumbnailImage", "image")
@@ -121,18 +144,24 @@ nonisolated struct Offer: Identifiable, Hashable {
 
     var storeIdInt: Int { Int(storeId ?? "") ?? 0 }
 
+    /// "Valid till 15 Oct 2026" when the API gives an end date.
+    var validTillText: String? {
+        guard let end = endDate, let d = DateParse.parse(end) else { return nil }
+        let f = DateFormatter()
+        f.dateFormat = "d MMM yyyy"
+        return "Valid till " + f.string(from: d)
+    }
+
     var isExpired: Bool {
         if activeStatus == false { return true }
         if let end = endDate, let date = DateParse.parse(end) { return date < Date() }
         return false
     }
 
-    /// Offers open the product detail screen in the Android app with placeholder prices.
+    /// Offers open the product detail screen. Offers carry no price, so none is shown.
     var asProduct: Product {
         var p = Product()
         p.productName = offerName
-        p.sellPrice = 999
-        p.cutPrice = 1499
         p.percentOff = String(discount)
         p.thumbnailImage = thumbnailImage
         p.description = "Exclusive offer from AtStores."

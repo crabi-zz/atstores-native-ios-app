@@ -93,7 +93,7 @@ struct HomeView: View {
             }
             .padding(.vertical)
         }
-        .overlay { if loading && !loaded { ProgressView() } }
+        .overlay { if loading && !loaded { SkeletonView(style: .home).background(Color(.systemBackground)) } }
         .refreshable { await load(force: true) }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
@@ -181,7 +181,7 @@ struct HomeOfferCard: View {
                         }
                     }
                 Text(offer.offerName).font(.subheadline.weight(.semibold)).lineLimit(1)
-                Text("AtStores").font(.caption).foregroundStyle(.secondary)
+                Text(offer.validTillText ?? "Limited time offer").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
             }
             .frame(width: 160, alignment: .leading)
         }

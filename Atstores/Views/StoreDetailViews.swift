@@ -27,9 +27,10 @@ struct StoreDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                RemoteImage(url: store.storeImage, placeholder: "storefront")
-                    .frame(height: 220)
-                    .frame(maxWidth: .infinity)
+                Color.clear
+                    .aspectRatio(16.0 / 9.0, contentMode: .fit)
+                    .overlay { RemoteImage(url: store.storeImage, placeholder: "storefront") }
+                    .clipped()
                     .overlay(alignment: .topTrailing) {
                         Button { Task { await toggleSave() } } label: {
                             Image(systemName: saved ? "heart.fill" : "heart")
@@ -51,15 +52,20 @@ struct StoreDetailView: View {
                     }
                     Text(store.storeCategoryName ?? "Category").font(.subheadline).foregroundStyle(.secondary)
                     Text(store.storeAddress ?? "Address not available").font(.subheadline)
-                    HStack {
-                        Text(store.distance > 0 ? String(format: "%.1f km away", store.distance) : "Nearby")
-                        Text("•")
-                        Text("OPEN").bold().foregroundStyle(Theme.open)
+                    HStack(spacing: 8) {
+                        if let open = store.isOpenNow {
+                            Text(open ? "Open now" : "Closed").bold().foregroundStyle(open ? Theme.open : Theme.closed)
+                        }
+                        if let km = store.distanceKm(fromLat: LocationService.shared.lat, lng: LocationService.shared.lng) {
+                            Label(Format.km(km) == "Nearby" ? "Nearby" : Format.km(km) + " away", systemImage: "location.fill")
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     .font(.subheadline)
-                    Label("\(Format.hour(store.startTime.nonEmpty ?? "10:00 AM")) – \(Format.hour(store.endTime.nonEmpty ?? "09:00 PM"))",
-                          systemImage: "clock")
-                        .font(.subheadline).foregroundStyle(.secondary)
+                    if let start = store.startTime.nonEmpty, let end = store.endTime.nonEmpty {
+                        Label("\(Format.hour(start)) – \(Format.hour(end))", systemImage: "clock")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                    }
                 }
                 .padding(.horizontal)
 
@@ -104,6 +110,11 @@ struct StoreDetailView: View {
                 .padding(.horizontal)
             }
             .padding(.bottom)
+        }
+        .refreshable {
+            async let a: Void = loadDetails()
+            async let b: Void = loadProducts()
+            _ = await (a, b)
         }
         .appHeader(title: "Store Details")
         .sheet(isPresented: $showRating) {
@@ -274,19 +285,31 @@ struct ProductDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                RemoteImage(url: product.thumbnailImage, placeholder: "bag", contentMode: .fit)
-                    .frame(height: 300)
-                    .frame(maxWidth: .infinity)
-                    .background(Theme.lightGray)
+                // Swipeable gallery: thumbnail plus any detail images, sized to the screen width.
+                let images = galleryImages
+                TabView {
+                    ForEach(Array(images.enumerated()), id: \.offset) { _, url in
+                        RemoteImage(url: url, placeholder: "bag", contentMode: .fit)
+                    }
+                }
+                .tabViewStyle(.page(indexDisplayMode: images.count > 1 ? .always : .never))
+                .indexViewStyle(.page(backgroundDisplayMode: .always))
+                .frame(maxWidth: .infinity)
+                .containerRelativeFrame(.vertical) { h, _ in h * 0.4 }   // ~40% of the screen on any iPhone
+                .background(Color(hex: 0xF7F7F7))
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text(product.productName).font(.title2.bold())
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Text(Format.price(product.sellPrice)).font(.title2.bold())
-                        if product.cutPrice > product.sellPrice {
-                            Text(Format.price(product.cutPrice)).strikethrough().foregroundStyle(.secondary)
+                        if product.sellPrice > 0 {
+                            Text(Format.price(product.sellPrice)).font(.title2.bold())
+                            if product.cutPrice > product.sellPrice {
+                                Text(Format.price(product.cutPrice)).strikethrough().foregroundStyle(.secondary)
+                            }
                         }
-                        Text(product.discountText).font(.subheadline.bold()).foregroundStyle(.green)
+                        if product.discountText != "NEW" {
+                            Text(product.discountText).font(.subheadline.bold()).foregroundStyle(Theme.open)
+                        }
                     }
                     Text("Description").font(.headline).padding(.top, 6)
                     Text(product.description ?? "No description available.").foregroundStyle(.secondary)
@@ -322,14 +345,27 @@ struct ProductDetailView: View {
                 .background(.bar)
             }
         }
+        .refreshable { await loadStore() }
         .appHeader(title: "Product Details")
         .task {
-            guard store == nil, product.storeId > 0,
-                  let d = await API.shared.object("api/public/store/\(product.storeId)") else { return }
-            let s = Store(d)
-            store = s
-            Analytics.visit(storeId: product.storeId, type: "PRODUCT_VIEW", name: product.productName, category: s.storeCategoryName)
+            guard store == nil else { return }
+            await loadStore()
+            if let s = store {
+                Analytics.visit(storeId: product.storeId, type: "PRODUCT_VIEW", name: product.productName, category: s.storeCategoryName)
+            }
         }
+    }
+
+    private var galleryImages: [String] {
+        var out: [String] = []
+        for url in [product.thumbnailImage].compactMap({ $0 }) + product.detailImages
+        where !url.isEmpty && !out.contains(url) { out.append(url) }
+        return out.isEmpty ? [""] : out   // one branded placeholder when there are no images
+    }
+
+    private func loadStore() async {
+        guard product.storeId > 0, let d = await API.shared.object("api/public/store/\(product.storeId)") else { return }
+        store = Store(d)
     }
 }
 

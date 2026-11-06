@@ -64,11 +64,11 @@ struct CouponsView: View {
                 }
                 .padding(.horizontal)
 
-                if !loading && filtered.isEmpty { EmptyStateView(icon: "ticket", text: "No coupons found") }
+                if !loading && filtered.isEmpty { EmptyStateView(icon: "ticket", text: "No coupons found", detail: "Coupons from stores will appear here.") }
             }
             .padding(.vertical)
         }
-        .overlay { if loading && coupons.isEmpty { ProgressView() } }
+        .overlay { if loading && coupons.isEmpty { SkeletonView(style: .grid).background(Color(.systemBackground)) } }
         .refreshable { await load() }
         .appHeader(title: "My Coupons") {
             Button { grid.toggle() } label: {
@@ -279,8 +279,8 @@ struct NotificationsView: View {
         }
         .listStyle(.plain)
         .overlay {
-            if loading && items.isEmpty { ProgressView() }
-            else if items.isEmpty { EmptyStateView(icon: "bell.slash", text: "No notifications") }
+            if loading && items.isEmpty { SkeletonView(style: .list).background(Color(.systemBackground)) }
+            else if items.isEmpty { EmptyStateView(icon: "bell.slash", text: "No notifications", detail: "Booking and offer updates will appear here.") }
         }
         .refreshable { await load() }
         .appHeader(title: "Notifications") {

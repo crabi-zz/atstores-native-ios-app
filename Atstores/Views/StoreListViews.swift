@@ -37,7 +37,7 @@ struct SearchView: View {
                 } else {
                     ForEach(results) { StoreRow(store: $0) }
                     if searched && results.isEmpty {
-                        EmptyStateView(icon: "magnifyingglass", text: "No stores found")
+                        EmptyStateView(icon: "magnifyingglass", text: "No results", detail: "Try a different name or category.")
                     }
                 }
             }
@@ -123,12 +123,12 @@ struct StoreListView: View {
                 }
                 .padding(.horizontal)
                 if !loading && stores.isEmpty {
-                    EmptyStateView(icon: "storefront", text: "No stores found")
+                    EmptyStateView(icon: "storefront", text: "No stores found", detail: "Try another category or search term.")
                 }
             }
             .padding(.vertical)
         }
-        .overlay { if loading { ProgressView() } }
+        .overlay { if loading && stores.isEmpty { SkeletonView(style: .list).background(Color(.systemBackground)) } }
         .task(id: query) {
             let q = query.trimmingCharacters(in: .whitespaces)
             if q.isEmpty { stores = original; return }
@@ -208,12 +208,12 @@ struct OffersView: View {
                 }
                 .padding(.horizontal)
                 if !loading && offers.isEmpty {
-                    EmptyStateView(icon: "tag", text: "No offers right now")
+                    EmptyStateView(icon: "tag", text: "No offers right now", detail: "Check back soon for deals near you.")
                 }
             }
             .padding(.vertical)
         }
-        .overlay { if loading && offers.isEmpty { ProgressView() } }
+        .overlay { if loading && offers.isEmpty { SkeletonView(style: .grid).background(Color(.systemBackground)) } }
         .refreshable { await load() }
         .navigationTitle("Offers")
         .appHeader()
@@ -240,17 +240,23 @@ struct OfferCard: View {
     let offer: Offer
     var body: some View {
         NavigationLink(value: Route.product(offer.asProduct)) {
-            VStack(alignment: .leading, spacing: 4) {
-                RemoteImage(url: offer.thumbnailImage, placeholder: "tag")
-                    .frame(height: 120)
-                    .frame(maxWidth: .infinity)
+            VStack(alignment: .leading, spacing: 5) {
+                Color.clear
+                    .aspectRatio(1.25, contentMode: .fit)
+                    .overlay { RemoteImage(url: offer.thumbnailImage, placeholder: "tag") }
                     .clipShape(RoundedRectangle(cornerRadius: 10))
-                Text(offer.offerName).font(.subheadline.weight(.semibold)).lineLimit(2)
-                Text("\(offer.discount)% OFF").font(.caption.bold()).foregroundStyle(.red)
-                Text("Atstores").font(.caption).foregroundStyle(.secondary)
-                HStack(spacing: 6) {
-                    Text("₹999").font(.subheadline.bold())
-                    Text("₹1499").font(.caption).strikethrough().foregroundStyle(.secondary)
+                    .overlay(alignment: .topLeading) {
+                        if offer.discount > 0 {
+                            Text("\(offer.discount)% OFF").font(.caption2.bold()).foregroundStyle(.white)
+                                .padding(.horizontal, 6).padding(.vertical, 3)
+                                .background(Color.red, in: RoundedRectangle(cornerRadius: 4)).padding(6)
+                        }
+                    }
+                Text(offer.offerName).font(.subheadline.weight(.semibold)).lineLimit(2, reservesSpace: true)
+                if let till = offer.validTillText {
+                    Label(till, systemImage: "calendar").font(.caption2).foregroundStyle(.secondary)
+                } else {
+                    Text("Limited time offer").font(.caption2).foregroundStyle(.secondary)
                 }
             }
             .padding(8)

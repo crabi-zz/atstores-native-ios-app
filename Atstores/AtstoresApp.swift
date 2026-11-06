@@ -17,6 +17,8 @@ struct AtstoresApp: App {
                 .environment(toast)
                 .toastOverlay(toast)
                 .tint(.orange)
+                // The brand colours are designed for light backgrounds; keep the app in Light Mode.
+                .preferredColorScheme(.light)
         }
     }
 }
