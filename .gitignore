@@ -1,0 +1,16 @@
+# macOS
+.DS_Store
+
+# Xcode user-specific state
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+DerivedData/
+build/
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Firebase config (add per environment; do not commit if the repo is public)
+GoogleService-Info.plist
