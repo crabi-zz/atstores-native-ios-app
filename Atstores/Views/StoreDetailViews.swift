@@ -26,88 +26,43 @@ struct StoreDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Color.clear
-                    .aspectRatio(16.0 / 9.0, contentMode: .fit)
-                    .overlay { RemoteImage(url: store.storeImage, placeholder: "storefront") }
-                    .clipped()
-                    .overlay(alignment: .topTrailing) {
-                        Button { Task { await toggleSave() } } label: {
-                            Image(systemName: saved ? "heart.fill" : "heart")
-                                .font(.title3).foregroundStyle(.black)
-                                .frame(width: 42, height: 42)
-                                .background(.white, in: Circle())
-                        }
-                        .padding(12)
-                    }
+            LazyVStack(alignment: .leading, spacing: 12, pinnedViews: [.sectionHeaders]) {
+                storeHeader
+                    .padding(.horizontal)
+                    .padding(.top, 12)
 
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text(store.storeName).font(.title2.bold())
-                        Spacer()
-                        if store.avgRating > 0 {
-                            Text(String(format: "%.1f ★", store.avgRating)).font(.headline).foregroundStyle(.orange)
-                            if store.ratingCount > 0 { Text("(\(store.ratingCount))").foregroundStyle(.secondary) }
-                        }
-                    }
-                    Text(store.storeCategoryName ?? "Category").font(.subheadline).foregroundStyle(.secondary)
-                    Text(store.storeAddress ?? "Address not available").font(.subheadline)
-                    HStack(spacing: 8) {
-                        if let open = store.isOpenNow {
-                            Text(open ? "Open now" : "Closed").bold().foregroundStyle(open ? Theme.open : Theme.closed)
-                        }
-                        if let km = store.distanceKm(fromLat: LocationService.shared.lat, lng: LocationService.shared.lng) {
-                            Label(Format.km(km) == "Nearby" ? "Nearby" : Format.km(km) + " away", systemImage: "location.fill")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .font(.subheadline)
-                    if let start = store.startTime.nonEmpty, let end = store.endTime.nonEmpty {
-                        Label("\(Format.hour(start)) – \(Format.hour(end))", systemImage: "clock")
+                actionRow
+                    .padding(.horizontal)
+
+                Section {
+                    if products.isEmpty {
+                        Text(allProducts.isEmpty ? "No products yet" : "No products in this category")
                             .font(.subheadline).foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.horizontal)
-
-                HStack {
-                    action("WhatsApp", "message.fill") { StoreActions.whatsApp(store.storeContactNo, toast: toast) }
-                    action("Call", "phone.fill") { StoreActions.call(store.storeContactNo, toast: toast) }
-                    action("Location", "map.fill") { StoreActions.location(store.storeAddress, toast: toast) }
-                    action("Website", "globe") { StoreActions.website(store.storeWebsite, toast: toast) }
-                }
-                .padding(.horizontal)
-
-                HStack(spacing: 12) {
-                    if store.isSalon {
-                        NavigationLink(value: Route.booking(storeId: store.storeId, storeName: store.storeName,
-                                                            category: store.storeCategoryName ?? "")) {
-                            Text("BOOK NOW")
+                            .frame(maxWidth: .infinity).padding(.vertical, 40)
+                    } else {
+                        LazyVGrid(columns: columns, spacing: 12) {
+                            ForEach(products) { ProductCard(product: $0, storeName: store.storeName) }
                         }
-                        .buttonStyle(PrimaryButtonStyle())
+                        .padding(.horizontal)
                     }
-                    Button(myRating > 0 ? "EDIT RATING" : "RATE STORE") {
-                        if Session.shared.uid.isEmpty || Session.shared.accessToken.isEmpty {
-                            toast.show("Please login to rate")
-                        } else {
-                            showRating = true
+                } header: {
+                    // Stays pinned at the top while scrolling the products.
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text(store.isSalon ? "Services" : "Products").font(.headline)
+                            if !allProducts.isEmpty {
+                                Text("\(products.count)").font(.subheadline).foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.horizontal)
+                        if categories.count > 1 {
+                            ChipBar(items: categories, title: \.name, selection: $selectedCategory)
                         }
                     }
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.primary, lineWidth: 2))
-                    .foregroundStyle(.primary)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(.systemBackground))
                 }
-                .padding(.horizontal)
-
-                if categories.count > 1 {
-                    ChipBar(items: categories, title: \.name, selection: $selectedCategory)
-                }
-
-                LazyVGrid(columns: columns, spacing: 12) {
-                    ForEach(products) { ProductCard(product: $0, storeName: store.storeName) }
-                }
-                .padding(.horizontal)
             }
             .padding(.bottom)
         }
@@ -135,17 +90,108 @@ struct StoreDetailView: View {
         }
     }
 
-    private func action(_ title: String, _ icon: String, _ run: @escaping () -> Void) -> some View {
-        Button(action: run) {
-            VStack(spacing: 6) {
-                Image(systemName: icon).font(.title3)
-                    .frame(width: 48, height: 48)
-                    .background(Theme.primary.opacity(0.2), in: Circle())
-                Text(title).font(.caption)
+    // MARK: Compact header
+
+    /// Store photo, name, rating, status and address in one card (about 120pt instead of half the screen).
+    private var storeHeader: some View {
+        HStack(alignment: .top, spacing: 12) {
+            RemoteImage(url: store.storeImage, placeholder: "storefront")
+                .frame(width: 84, height: 84)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .top, spacing: 8) {
+                    Text(store.storeName).font(.headline).lineLimit(2)
+                    Spacer(minLength: 4)
+                    Button { Task { await toggleSave() } } label: {
+                        Image(systemName: saved ? "heart.fill" : "heart")
+                            .font(.body)
+                            .foregroundStyle(saved ? Theme.heart : .secondary)
+                            .frame(width: 32, height: 32)
+                            .background(Theme.lightGray, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(saved ? "Remove from saved" : "Save store")
+                }
+
+                HStack(spacing: 6) {
+                    if let cat = store.storeCategoryName, !cat.isEmpty {
+                        Text(cat).foregroundStyle(.secondary)
+                    }
+                    if store.avgRating > 0 {
+                        Text("·").foregroundStyle(.secondary)
+                        Text(String(format: "%.1f ★", store.avgRating)).bold().foregroundStyle(.orange)
+                        if store.ratingCount > 0 { Text("(\(store.ratingCount))").foregroundStyle(.secondary) }
+                    }
+                }
+                .font(.caption)
+                .lineLimit(1)
+
+                HStack(spacing: 6) {
+                    if let open = store.isOpenNow {
+                        Text(open ? "Open now" : "Closed").bold().foregroundStyle(open ? Theme.open : Theme.closed)
+                    }
+                    if let start = store.startTime.nonEmpty, let end = store.endTime.nonEmpty {
+                        Text("\(Format.hour(start)) – \(Format.hour(end))").foregroundStyle(.secondary)
+                    }
+                    if let km = store.distanceKm(fromLat: LocationService.shared.lat, lng: LocationService.shared.lng) {
+                        Text("· " + (Format.km(km) == "Nearby" ? "Nearby" : Format.km(km))).foregroundStyle(.secondary)
+                    }
+                }
+                .font(.caption)
+                .lineLimit(1)
+
+                if let address = store.storeAddress, !address.isEmpty {
+                    Label(address, systemImage: "mappin.and.ellipse")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
             }
-            .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.plain)
+        .padding(12)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
+    }
+
+    /// One row of small actions instead of big circles plus two large buttons.
+    private var actionRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                if store.isSalon {
+                    NavigationLink(value: Route.booking(storeId: store.storeId, storeName: store.storeName,
+                                                        category: store.storeCategoryName ?? "")) {
+                        pill("Book Now", "calendar", filled: true)
+                    }
+                    .buttonStyle(.plain)
+                }
+                Button { StoreActions.call(store.storeContactNo, toast: toast) } label: { pill("Call", "phone.fill") }
+                    .buttonStyle(.plain)
+                Button { StoreActions.whatsApp(store.storeContactNo, toast: toast) } label: { pill("WhatsApp", "message.fill") }
+                    .buttonStyle(.plain)
+                Button { StoreActions.location(store.storeAddress, toast: toast) } label: { pill("Directions", "map.fill") }
+                    .buttonStyle(.plain)
+                if let site = store.storeWebsite, !site.trimmingCharacters(in: .whitespaces).isEmpty {
+                    Button { StoreActions.website(store.storeWebsite, toast: toast) } label: { pill("Website", "globe") }
+                        .buttonStyle(.plain)
+                }
+                Button {
+                    if Session.shared.uid.isEmpty || Session.shared.accessToken.isEmpty {
+                        toast.show("Please login to rate")
+                    } else {
+                        showRating = true
+                    }
+                } label: { pill(myRating > 0 ? "Edit Rating" : "Rate", "star.fill") }
+                    .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func pill(_ title: String, _ icon: String, filled: Bool = false) -> some View {
+        Label(title, systemImage: icon)
+            .font(.subheadline.weight(.semibold))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .background(filled ? Theme.primary : Theme.primary.opacity(0.18), in: Capsule())
+            .foregroundStyle(.black)
     }
 
     private func loadDetails() async {
@@ -279,6 +325,10 @@ struct RateStoreSheet: View {
 struct ProductDetailView: View {
     let product: Product
     @State private var store: Store?
+    @State private var galleryIndex = 0
+    @State private var viewerIndex: ViewerIndex?
+
+    private struct ViewerIndex: Identifiable { let id: Int }
 
     private var isSalon: Bool { store?.isSalon ?? false }
 
@@ -287,9 +337,24 @@ struct ProductDetailView: View {
             VStack(alignment: .leading, spacing: 14) {
                 // Swipeable gallery: thumbnail plus any detail images, sized to the screen width.
                 let images = galleryImages
-                TabView {
-                    ForEach(Array(images.enumerated()), id: \.offset) { _, url in
+                TabView(selection: $galleryIndex) {
+                    ForEach(Array(images.enumerated()), id: \.offset) { i, url in
                         RemoteImage(url: url, placeholder: "bag", contentMode: .fit)
+                            .contentShape(Rectangle())
+                            // Tap opens the full-screen viewer with pinch zoom.
+                            .onTapGesture { if !url.isEmpty { viewerIndex = ViewerIndex(id: i) } }
+                            .tag(i)
+                    }
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    if images.first?.isEmpty == false {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .font(.caption.bold())
+                            .foregroundStyle(.white)
+                            .frame(width: 30, height: 30)
+                            .background(.black.opacity(0.45), in: Circle())
+                            .padding(10)
+                            .allowsHitTesting(false)
                     }
                 }
                 .tabViewStyle(.page(indexDisplayMode: images.count > 1 ? .always : .never))
@@ -297,6 +362,9 @@ struct ProductDetailView: View {
                 .frame(maxWidth: .infinity)
                 .containerRelativeFrame(.vertical) { h, _ in h * 0.4 }   // ~40% of the screen on any iPhone
                 .background(Color(hex: 0xF7F7F7))
+                .fullScreenCover(item: $viewerIndex) { v in
+                    PhotoViewer(urls: images.filter { !$0.isEmpty }, index: v.id)
+                }
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text(product.productName).font(.title2.bold())
