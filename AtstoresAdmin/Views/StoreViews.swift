@@ -121,13 +121,13 @@ struct StoreCard: View {
 struct StoreManageView: View {
     let storeId: Int
     @Environment(ToastCenter.self) private var toast
+    @Environment(Router.self) private var router
     @State private var store = Store()
     @State private var categories: [String] = ["All"]
     @State private var selectedCategory = "All"
     @State private var allProducts: [Product] = []
     @State private var loaded = false
     @State private var uploadingStore = false
-    @State private var uploadingProduct: Int?
 
     private var products: [Product] {
         selectedCategory == "All" ? allProducts
@@ -280,17 +280,21 @@ struct StoreManageView: View {
                     .frame(height: 120)
                     .frame(maxWidth: .infinity)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
-                ImagePickButton(onPick: { data in Task { await uploadProductImage(p.productId, data) } }) {
-                    Group {
-                        if uploadingProduct == p.productId { ProgressView().tint(.white) }
-                        else { Image(systemName: "camera.fill").font(.caption2) }
+                // Opens the photo manager (up to 10 photos per product).
+                Button { router.path.append(.productPhotos(p)) } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "camera.fill").font(.caption2)
+                        let count = (p.mainImage == nil ? 0 : 1) + p.detailImages.count
+                        if count > 1 { Text("\(count)").font(.caption2.bold()) }
                     }
                     .foregroundStyle(.white)
-                    .frame(width: 28, height: 28)
-                    .background(.black.opacity(0.55), in: Circle())
+                    .frame(minWidth: 28, minHeight: 28)
+                    .padding(.horizontal, 2)
+                    .background(.black.opacity(0.55), in: Capsule())
                 }
+                .buttonStyle(.plain)
                 .padding(6)
-                .disabled(uploadingProduct != nil)
+                .accessibilityLabel("Product photos")
                 if p.hasDiscount, let off = p.percentOff {
                     Text(off).font(.caption2.bold()).foregroundStyle(.white)
                         .padding(.horizontal, 6).padding(.vertical, 3)
@@ -353,20 +357,6 @@ struct StoreManageView: View {
             await AppState.shared.loadStores()
         } else {
             toast.show("Image upload failed: \(r.status)")
-        }
-    }
-
-    private func uploadProductImage(_ productId: Int, _ data: Data) async {
-        uploadingProduct = productId
-        defer { uploadingProduct = nil }
-        guard let r = try? await API.shared.upload("api/store/\(productId)/productImage", field: "productImage", data: data) else {
-            toast.show("Network error during product image upload"); return
-        }
-        if r.ok {
-            toast.show("Product Image Updated Successfully")
-            await load()
-        } else {
-            toast.show("Product image upload failed: \(r.status)")
         }
     }
 }

@@ -7,6 +7,7 @@ struct ProductFormView: View {
     let existing: Product?
     @Environment(ToastCenter.self) private var toast
     @Environment(\.dismiss) private var dismiss
+    @Environment(Router.self) private var router
 
     @State private var isService = false
     @State private var name = ""
@@ -92,6 +93,22 @@ struct ProductFormView: View {
                 }
                 .cardStyle()
 
+                if let p = existing {
+                    NavigationLink(value: Route.productPhotos(p)) {
+                        HStack {
+                            Image(systemName: "photo.on.rectangle.angled")
+                            Text("Manage Photos").font(.subheadline.weight(.semibold))
+                            Spacer()
+                            Text("\((p.mainImage == nil ? 0 : 1) + p.detailImages.count) / \(ProductPhotosView.maxPhotos)")
+                                .font(.subheadline).foregroundStyle(.secondary)
+                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
+                        }
+                        .foregroundStyle(Theme.primary)
+                    }
+                    .buttonStyle(.plain)
+                    .cardStyle()
+                }
+
                 BusyButton(title: existing == nil ? "SAVE" : "UPDATE", busy: busy) { Task { await save() } }
             }
             .padding(16)
@@ -170,6 +187,15 @@ struct ProductFormView: View {
         }
         if r.ok {
             toast.show(existing == nil ? "Product/Service Added Successfully" : "Product/Service Updated Successfully")
+            // New product: go straight to adding its photos (up to 10).
+            if existing == nil, let d = (r.json as? JSONDict)?["data"] as? JSONDict {
+                let saved = Product(d)
+                if saved.productId != 0, case .productForm? = router.path.last {
+                    router.path.removeLast()
+                    router.path.append(.productPhotos(saved))
+                    return
+                }
+            }
             dismiss()
         } else {
             toast.show("Failed: \(r.status)")

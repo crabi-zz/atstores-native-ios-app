@@ -80,6 +80,10 @@ nonisolated struct Product: Identifiable, Hashable {
     var cutPrice: Double = 0
     var percentOff: String?
     var thumbnailImage: String?
+    /// The real main image (thumbnailImage) without the detailImages fallback.
+    var mainImage: String?
+    /// Extra product photos (up to 9 besides the main image).
+    var detailImages: [String] = []
     var createdDate: String = ""
     var itemType: String?
     var quantity: Int?
@@ -100,8 +104,9 @@ nonisolated struct Product: Identifiable, Hashable {
         sellPrice = d.double("sellPrice")
         cutPrice = d.double("cutPrice")
         percentOff = d.str("percentOff")
-        thumbnailImage = d.str("thumbnailImage", "image", "imageUrl", "productImage", "img")
-            ?? d.strings("detailImages").first
+        mainImage = d.str("thumbnailImage", "image", "imageUrl", "productImage", "img")
+        detailImages = d.strings("detailImages").filter { !$0.isEmpty && $0 != "null" }
+        thumbnailImage = mainImage ?? detailImages.first
         createdDate = d.str("createdDate") ?? ""
         itemType = d.str("itemType")
         if d["quantity"] != nil, !(d["quantity"] is NSNull) { quantity = d.int("quantity") }

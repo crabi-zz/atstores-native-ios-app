@@ -7,6 +7,7 @@ enum Route: Hashable {
     case store(Int)
     case storeForm(Int)                       // 0 = register a new store
     case productForm(storeId: Int, product: Product?)
+    case productPhotos(Product)
     case categories(Int)
     case productCustomers(storeId: Int, productId: Int, title: String)
     case offers(Int)
@@ -40,6 +41,7 @@ struct RouteView: View {
         case .store(let id): StoreManageView(storeId: id)
         case .storeForm(let id): StoreFormView(storeId: id)
         case .productForm(let sid, let p): ProductFormView(storeId: sid, existing: p)
+        case .productPhotos(let p): ProductPhotosView(product: p)
         case .categories(let id): ManageCategoriesView(storeId: id)
         case .productCustomers(let sid, let pid, let title): ProductCustomersView(storeId: sid, productId: pid, title: title)
         case .offers(let id): OffersView(storeId: id)
