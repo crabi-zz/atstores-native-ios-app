@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 enum HTTPMethod: String { case get = "GET", post = "POST", put = "PUT", delete = "DELETE" }
 
@@ -43,6 +44,14 @@ final class API {
 
     func send(_ method: HTTPMethod, _ path: String, query: [String: Any] = [:], body: Any? = nil) async throws -> APIResponse {
         var request = makeRequest(method, path, query: query)
+        var body = body
+        // Logins send this phone's id, so the server keeps one login per device
+        // (logging in on the website or another phone no longer logs this one out).
+        if path.hasSuffix("auth/otp-login") || path.hasSuffix("auth/login"),
+           var dict = body as? [String: Any], dict["deviceId"] == nil {
+            dict["deviceId"] = Self.deviceId
+            body = dict
+        }
         if let body {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -137,6 +146,15 @@ final class API {
             try await Task.sleep(for: .milliseconds(400))
             return try await raw(req)
         }
+    }
+
+    /// Stable id for this install, sent with logins (one server-side login per device).
+    static var deviceId: String {
+        let key = "atstores_device_id"
+        if let id = UserDefaults.standard.string(forKey: key) { return id }
+        let id = "IOS-" + (UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString)
+        UserDefaults.standard.set(id, forKey: key)
+        return id
     }
 
     /// True if the JWT is missing, unreadable, or expires within a minute.
