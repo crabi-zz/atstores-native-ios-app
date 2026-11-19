@@ -25,6 +25,8 @@ struct AtstoresApp: App {
 
 struct RootView: View {
     @State private var showSplash = true
+    @Environment(ToastCenter.self) private var toast
+    @Environment(\.scenePhase) private var scenePhase
     private var session = Session.shared
 
     var body: some View {
@@ -41,6 +43,16 @@ struct RootView: View {
         .task {
             try? await Task.sleep(for: .seconds(2))
             withAnimation { showSplash = false }
+        }
+        // Coming back after hours idle: renew the 24 h access token before screens load data.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await API.shared.refreshIfNeeded() } }
+        }
+        // Refresh token expired (30 days unused) or revoked: go back to login with a message.
+        .onReceive(NotificationCenter.default.publisher(for: .atstoresSessionExpired)) { _ in
+            guard session.isLoggedIn else { return }
+            session.logout()
+            toast.show("Session expired. Please log in again.", long: true)
         }
     }
 }
