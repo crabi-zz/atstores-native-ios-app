@@ -276,3 +276,37 @@ struct HTMLTextView: UIViewRepresentable {
         return CGSize(width: width, height: size.height)
     }
 }
+
+/// Apple guideline 5.1.1(v): account deletion must be startable inside the app.
+/// AtStores handles deletion through support (https://atstores.in/static/delete-account),
+/// so the app opens a pre-filled request email, falling back to that page if no mail app is set up.
+enum AccountDeletion {
+    static let supportEmail = "support@atstores.in"
+    static let infoPage = URL(string: "https://atstores.in/static/delete-account")!
+
+    static func request(accountType: String, appName: String, mobile: String, userId: String) {
+        let body = """
+        Hello AtStores Support,
+
+        Please delete my AtStores account and the personal data associated with it.
+
+        Registered mobile number: \(mobile.isEmpty ? "-" : mobile)
+        User ID: \(userId.isEmpty ? "-" : userId)
+        Platform: iOS (\(appName))
+        Account type: \(accountType)
+
+        Thank you.
+        """
+        var comps = URLComponents()
+        comps.scheme = "mailto"
+        comps.path = supportEmail
+        comps.queryItems = [URLQueryItem(name: "subject", value: "Account Deletion Request"),
+                            URLQueryItem(name: "body", value: body)]
+        guard let mail = comps.url else { UIApplication.shared.open(infoPage); return }
+        UIApplication.shared.open(mail) { opened in
+            if !opened { UIApplication.shared.open(infoPage) }
+        }
+    }
+
+    static func openInfoPage() { UIApplication.shared.open(infoPage) }
+}

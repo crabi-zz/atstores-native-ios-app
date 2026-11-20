@@ -49,7 +49,7 @@ struct LoginView: View {
         loading = true
         defer { loading = false }
         // Same payload as LoginActivity, including its static email ("Static as per current setup").
-        let body = ["mobileNumber": mobile, "email": "rabichoudhury@gmail.com", "channel": "SMS",
+        let body = ["mobileNumber": mobile, "email": "support@atstores.in", "channel": "SMS",
                     "purpose": "LOGIN", "countryCode": "+91"]
         do {
             let r = try await API.shared.send(.post, "api/otp/send", body: body)
@@ -152,8 +152,7 @@ struct OtpView: View {
     }
 
     private func login(uid: String) async {
-        // Push notifications (FCM) are not wired up on iOS yet, so no device token is sent.
-        let body = ["mobile": fullMobile, "uid": uid, "appType": "CUSTOMER", "fcmToken": ""]
+        let body = ["mobile": fullMobile, "uid": uid, "appType": "CUSTOMER", "fcmToken": PushService.shared.fcmToken]
         do {
             let r = try await API.shared.send(.post, "api/auth/otp-login", body: body)
             guard r.ok, let d = r.json as? JSONDict else { toast.show(r.errorMessage("Login Failed"), long: true); return }

@@ -9,6 +9,7 @@ import SwiftUI
 
 @main
 struct AtstoresApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var toast = ToastCenter()
 
     var body: some Scene {
@@ -70,6 +71,7 @@ struct MainTabView: View {
     enum Tab { case home, search, offers, profile }
     @State private var tab: Tab = .home
     @State private var homePath: [Route] = []
+    private var push = PushService.shared
 
     var body: some View {
         TabView(selection: $tab) {
@@ -81,6 +83,18 @@ struct MainTabView: View {
                 .tabItem { Label("Offers", systemImage: "tag") }.tag(Tab.offers)
             NavigationStack { ProfileView().appDestinations() }
                 .tabItem { Label("Profile", systemImage: "person") }.tag(Tab.profile)
+        }
+        // Ask for notification permission once logged in, and keep the server's FCM token current.
+        .task {
+            PushService.shared.requestPermission()
+            await PushService.shared.syncToken()
+        }
+        // Notification tap: show the Notifications screen.
+        .onChange(of: push.openNotifications, initial: true) { _, open in
+            guard open else { return }
+            push.openNotifications = false
+            tab = .home
+            homePath = [.notifications]
         }
         #if DEBUG
         .task { await openDebugScreen() }

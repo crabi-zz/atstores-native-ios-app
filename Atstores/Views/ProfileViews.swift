@@ -5,6 +5,7 @@ struct ProfileView: View {
     @Environment(ToastCenter.self) private var toast
     private var session = Session.shared
     @State private var confirmLogout = false
+    @State private var confirmDelete = false
 
     private var appVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
@@ -67,6 +68,9 @@ struct ProfileView: View {
                 Button(role: .destructive) { confirmLogout = true } label: {
                     Label("Logout", systemImage: "rectangle.portrait.and.arrow.right")
                 }
+                Button(role: .destructive) { confirmDelete = true } label: {
+                    Label("Delete Account", systemImage: "person.crop.circle.badge.xmark")
+                }
             } footer: {
                 NavigationLink(value: Route.appVersion) {
                     Text("Atstores v\(appVersion)").frame(maxWidth: .infinity)
@@ -78,6 +82,17 @@ struct ProfileView: View {
         .appHeader()
         .confirmationDialog("Log out of AtStores?", isPresented: $confirmLogout, titleVisibility: .visible) {
             Button("Logout", role: .destructive) { session.logout() }
+        }
+        .alert("Delete your account?", isPresented: $confirmDelete) {
+            Button("Request Deletion", role: .destructive) {
+                AccountDeletion.request(accountType: "Customer", appName: "AtStores",
+                                        mobile: session.contactMobile,
+                                        userId: session.numericUserId > 0 ? String(session.numericUserId) : session.uid)
+            }
+            Button("Learn More") { AccountDeletion.openInfoPage() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This sends a deletion request for your account to AtStores support. After verifying it's you, they delete your account and personal data, including bookings, wishlist and saved stores where the law allows.")
         }
         .task { await refreshUser() }
     }
