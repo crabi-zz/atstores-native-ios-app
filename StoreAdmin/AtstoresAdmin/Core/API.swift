@@ -40,7 +40,10 @@ final class API {
     }
 
     /// The Android interceptor sent the bearer token on every path except `/api/public/`.
-    private static func needsAuth(_ path: String) -> Bool { !path.contains("api/public/") }
+    /// Public endpoints go without a token, except notifications, which belong to the logged-in user.
+    private static func needsAuth(_ path: String) -> Bool {
+        !path.contains("api/public/") || path.contains("api/public/notifications")
+    }
 
     func send(_ method: HTTPMethod, _ path: String, query: [String: Any] = [:], body: Any? = nil) async throws -> APIResponse {
         var request = makeRequest(method, path, query: query)
